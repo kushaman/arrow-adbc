@@ -15,7 +15,6 @@
 * limitations under the License.
 */
 
-using System;
 using Apache.Arrow.Adbc.Drivers.Apache.Hive2;
 
 namespace Apache.Arrow.Adbc.Drivers.Apache.Impala
@@ -25,11 +24,6 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Impala
         internal ImpalaStatement(ImpalaConnection connection)
             : base(connection)
         {
-        }
-
-        public override object GetValue(IArrowArray arrowArray, int index)
-        {
-            throw new NotSupportedException();
         }
 
         /// <summary>
