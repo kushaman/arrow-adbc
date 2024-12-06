@@ -17,76 +17,108 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Apache.Arrow.Adbc.Drivers.Apache.Hive2;
 using Apache.Arrow.Ipc;
 using Apache.Hive.Service.Rpc.Thrift;
-using Thrift;
-using Thrift.Protocol;
-using Thrift.Transport;
 
 namespace Apache.Arrow.Adbc.Drivers.Apache.Impala
 {
-    internal class ImpalaConnection : HiveServer2Connection
+    internal abstract class ImpalaConnection : HiveServer2Connection
     {
+        internal static readonly string s_userAgent = $"{InfoDriverName.Replace(" ", "")}/{ProductVersionDefault}";
+
+        const string ProductVersionDefault = "1.0.0";
+        const string InfoDriverName = "ADBC Impala Driver";
+
+        private readonly Lazy<string> _productVersion;
+
+        /*
         // https://impala.apache.org/docs/build/html/topics/impala_ports.html
         // https://impala.apache.org/docs/build/html/topics/impala_client.html
         private const int DefaultSocketTransportPort = 21050;
         private const int DefaultHttpTransportPort = 28000;
+        */
 
         internal ImpalaConnection(IReadOnlyDictionary<string, string> properties)
             : base(properties)
         {
+            ValidateProperties();
+            _productVersion = new Lazy<string>(() => GetProductVersion(), LazyThreadSafetyMode.PublicationOnly);
         }
 
-        protected override TTransport CreateTransport()
+        private void ValidateProperties()
         {
-            string hostName = Properties["HostName"];
-            string? tmp;
-            int port = DefaultSocketTransportPort; // default?
-            if (Properties.TryGetValue("Port", out tmp))
-            {
-                port = int.Parse(tmp);
-            }
-
-            TConfiguration config = new TConfiguration();
-            TTransport transport = new ThriftSocketTransport(hostName, port, config);
-            return transport;
+            ValidateAuthentication();
+            ValidateConnection();
+            ValidateOptions();
         }
 
-        protected override Task<TProtocol> CreateProtocolAsync(TTransport transport, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<TProtocol>(new TBinaryProtocol(transport));
-        }
+        protected string ProductVersion => _productVersion.Value;
 
-        protected override TOpenSessionReq CreateSessionRequest()
-        {
-            return new TOpenSessionReq(TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V7)
-            {
-                CanUseMultipleCatalogs = true,
-            };
-        }
+        protected override string GetProductVersionDefault() => ProductVersionDefault;
 
         public override AdbcStatement CreateStatement()
         {
             return new ImpalaStatement(this);
         }
 
-        public override IArrowArrayStream GetObjects(GetObjectsDepth depth, string? catalogPattern, string? dbSchemaPattern, string? tableNamePattern, IReadOnlyList<string>? tableTypes, string? columnNamePattern)
-        {
-            throw new System.NotImplementedException();
-        }
+        // Note Impala's Position is one-indexed, not zero-indexed
+        protected override IReadOnlyDictionary<string, int> GetColumnIndexMap(List<TColumnDesc> columns) => columns
+           .Select(t => new { Index = t.Position, t.ColumnName })
+           .ToDictionary(t => t.ColumnName, t => t.Index);
 
-        public override IArrowArrayStream GetTableTypes()
-        {
-            throw new System.NotImplementedException();
-        }
+        protected override Task<TGetResultSetMetadataResp> GetResultSetMetadataAsync(TGetSchemasResp response, CancellationToken cancellationToken = default) =>
+            GetResultSetMetadataAsync(response.OperationHandle, Client, cancellationToken);
+        protected override Task<TGetResultSetMetadataResp> GetResultSetMetadataAsync(TGetCatalogsResp response, CancellationToken cancellationToken = default) =>
+            GetResultSetMetadataAsync(response.OperationHandle, Client, cancellationToken);
+        protected override Task<TGetResultSetMetadataResp> GetResultSetMetadataAsync(TGetColumnsResp response, CancellationToken cancellationToken = default) =>
+            GetResultSetMetadataAsync(response.OperationHandle, Client, cancellationToken);
+        protected override Task<TGetResultSetMetadataResp> GetResultSetMetadataAsync(TGetTablesResp response, CancellationToken cancellationToken = default) =>
+            GetResultSetMetadataAsync(response.OperationHandle, Client, cancellationToken);
+        protected override Task<TRowSet> GetRowSetAsync(TGetTableTypesResp response, CancellationToken cancellationToken = default) =>
+            FetchResultsAsync(response.OperationHandle, cancellationToken: cancellationToken);
+        protected override Task<TRowSet> GetRowSetAsync(TGetColumnsResp response, CancellationToken cancellationToken = default) =>
+            FetchResultsAsync(response.OperationHandle, cancellationToken: cancellationToken);
+        protected override Task<TRowSet> GetRowSetAsync(TGetTablesResp response, CancellationToken cancellationToken = default) =>
+            FetchResultsAsync(response.OperationHandle, cancellationToken: cancellationToken);
+        protected override Task<TRowSet> GetRowSetAsync(TGetCatalogsResp response, CancellationToken cancellationToken = default) =>
+            FetchResultsAsync(response.OperationHandle, cancellationToken: cancellationToken);
+        protected override Task<TRowSet> GetRowSetAsync(TGetSchemasResp response, CancellationToken cancellationToken = default) =>
+            FetchResultsAsync(response.OperationHandle, cancellationToken: cancellationToken);
 
-        public override Schema GetTableSchema(string? catalog, string? dbSchema, string tableName) => throw new System.NotImplementedException();
+        protected override bool AreResultsAvailableDirectly() => false;
+
+        protected override TSparkGetDirectResults GetDirectResults() => throw new System.NotImplementedException();
 
         internal override SchemaParser SchemaParser { get; } = new HiveServer2SchemaParser();
 
-        internal override IArrowArrayStream NewReader<T>(T statement, Schema schema) => new HiveServer2Reader(statement, schema, dataTypeConversion: DataTypeConversion);
+        protected abstract void ValidateConnection();
+
+        protected abstract void ValidateAuthentication();
+
+        protected abstract void ValidateOptions();
+
+        internal abstract ImpalaServerType ServerType { get; }
+
+        protected override ColumnsMetadataColumnNames GetColumnsMetadataColumnNames()
+        {
+            return new ColumnsMetadataColumnNames()
+            {
+                TableCatalog = TableCat,
+                TableSchema = TableMd,
+                TableName = TableName,
+                ColumnName = ColumnName,
+                DataType = DataType,
+                TypeName = TypeName,
+                Nullable = Nullable,
+                ColumnDef = ColumnDef,
+                OrdinalPosition = OrdinalPosition,
+                IsNullable = IsNullable,
+                IsAutoIncrement = IsAutoIncrement,
+            };
+        }
     }
 }
