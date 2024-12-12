@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http;
@@ -32,56 +33,47 @@ using Thrift;
 using Thrift.Protocol;
 using Thrift.Transport;
 
-namespace Apache.Arrow.Adbc.Drivers.Apache.Spark
+namespace Apache.Arrow.Adbc.Drivers.Apache.Impala
 {
-    internal class SparkHttpConnection : SparkConnection
+    internal class ImpalaHttpConnection : ImpalaConnection
     {
-        private static readonly string s_userAgent = $"{DriverName.Replace(" ", "")}/{ProductVersionDefault}";
         private const string BasicAuthenticationScheme = "Basic";
-        private const string BearerAuthenticationScheme = "Bearer";
 
-        public SparkHttpConnection(IReadOnlyDictionary<string, string> properties) : base(properties)
+        public ImpalaHttpConnection(IReadOnlyDictionary<string, string> properties) : base(properties)
         {
         }
 
         protected override void ValidateAuthentication()
         {
             // Validate authentication parameters
-            Properties.TryGetValue(SparkParameters.Token, out string? token);
             Properties.TryGetValue(AdbcOptions.Username, out string? username);
             Properties.TryGetValue(AdbcOptions.Password, out string? password);
-            Properties.TryGetValue(SparkParameters.AuthType, out string? authType);
-            bool isValidAuthType = SparkAuthTypeParser.TryParse(authType, out SparkAuthType authTypeValue);
+            Properties.TryGetValue(ImpalaParameters.AuthType, out string? authType);
+            bool isValidAuthType = ImpalaAuthTypeParser.TryParse(authType, out ImpalaAuthType authTypeValue);
             switch (authTypeValue)
             {
-                case SparkAuthType.Token:
-                    if (string.IsNullOrWhiteSpace(token))
-                        throw new ArgumentException(
-                            $"Parameter '{SparkParameters.AuthType}' is set to '{SparkAuthTypeConstants.Token}' but parameter '{SparkParameters.Token}' is not set. Please provide a value for '{SparkParameters.Token}'.",
-                            nameof(Properties));
-                    break;
-                case SparkAuthType.Basic:
+                case ImpalaAuthType.Basic:
                     if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
                         throw new ArgumentException(
-                            $"Parameter '{SparkParameters.AuthType}' is set to '{SparkAuthTypeConstants.Basic}' but parameters '{AdbcOptions.Username}' or '{AdbcOptions.Password}' are not set. Please provide a values for these parameters.",
+                            $"Parameter '{ImpalaParameters.AuthType}' is set to '{ImpalaAuthTypeConstants.Basic}' but parameters '{AdbcOptions.Username}' or '{AdbcOptions.Password}' are not set. Please provide a values for these parameters.",
                             nameof(Properties));
                     break;
-                case SparkAuthType.UsernameOnly:
+                case ImpalaAuthType.UsernameOnly:
                     if (string.IsNullOrWhiteSpace(username))
                         throw new ArgumentException(
-                            $"Parameter '{SparkParameters.AuthType}' is set to '{SparkAuthTypeConstants.UsernameOnly}' but parameter '{AdbcOptions.Username}' is not set. Please provide a values for this parameter.",
+                            $"Parameter '{ImpalaParameters.AuthType}' is set to '{ImpalaAuthTypeConstants.UsernameOnly}' but parameter '{AdbcOptions.Username}' is not set. Please provide a values for this parameter.",
                             nameof(Properties));
                     break;
-                case SparkAuthType.None:
+                case ImpalaAuthType.None:
                     break;
-                case SparkAuthType.Empty:
-                    if (string.IsNullOrWhiteSpace(token) && (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password)))
+                case ImpalaAuthType.Empty:
+                    if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
                         throw new ArgumentException(
-                            $"Parameters must include valid authentiation settings. Please provide either '{SparkParameters.Token}'; or '{AdbcOptions.Username}' and '{AdbcOptions.Password}'.",
+                            $"Parameters must include valid authentiation settings. Please provide '{AdbcOptions.Username}' and '{AdbcOptions.Password}'.",
                             nameof(Properties));
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException(SparkParameters.AuthType, authType, $"Unsupported {SparkParameters.AuthType} value.");
+                    throw new ArgumentOutOfRangeException(ImpalaParameters.AuthType, authType, $"Unsupported {ImpalaParameters.AuthType} value.");
             }
         }
 
@@ -89,25 +81,25 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Spark
         {
             // HostName or Uri is required parameter
             Properties.TryGetValue(AdbcOptions.Uri, out string? uri);
-            Properties.TryGetValue(SparkParameters.HostName, out string? hostName);
+            Properties.TryGetValue(ImpalaParameters.HostName, out string? hostName);
             if ((Uri.CheckHostName(hostName) == UriHostNameType.Unknown)
                 && (string.IsNullOrEmpty(uri) || !Uri.TryCreate(uri, UriKind.Absolute, out Uri? _)))
             {
                 throw new ArgumentException(
-                    $"Required parameter '{SparkParameters.HostName}' or '{AdbcOptions.Uri}' is missing or invalid. Please provide a valid hostname or URI for the data source.",
+                    $"Required parameter '{ImpalaParameters.HostName}' or '{AdbcOptions.Uri}' is missing or invalid. Please provide a valid hostname or URI for the data source.",
                     nameof(Properties));
             }
 
             // Validate port range
-            Properties.TryGetValue(SparkParameters.Port, out string? port);
+            Properties.TryGetValue(ImpalaParameters.Port, out string? port);
             if (int.TryParse(port, out int portNumber) && (portNumber <= IPEndPoint.MinPort || portNumber > IPEndPoint.MaxPort))
                 throw new ArgumentOutOfRangeException(
                     nameof(Properties),
                     port,
-                    $"Parameter '{SparkParameters.Port}' value is not in the valid range of 1 .. {IPEndPoint.MaxPort}.");
+                    $"Parameter '{ImpalaParameters.Port}' value is not in the valid range of 1 .. {IPEndPoint.MaxPort}.");
 
             // Ensure the parameters will produce a valid address
-            Properties.TryGetValue(SparkParameters.Path, out string? path);
+            Properties.TryGetValue(ImpalaParameters.Path, out string? path);
             _ = new HttpClient()
             {
                 BaseAddress = GetBaseAddress(uri, hostName, path, port)
@@ -116,16 +108,16 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Spark
 
         protected override void ValidateOptions()
         {
-            Properties.TryGetValue(SparkParameters.DataTypeConv, out string? dataTypeConv);
+            Properties.TryGetValue(ImpalaParameters.DataTypeConv, out string? dataTypeConv);
             DataTypeConversion = DataTypeConversionParser.Parse(dataTypeConv);
-            Properties.TryGetValue(SparkParameters.TLSOptions, out string? tlsOptions);
+            Properties.TryGetValue(ImpalaParameters.TLSOptions, out string? tlsOptions);
             TlsOptions = TlsOptionsParser.Parse(tlsOptions);
-            Properties.TryGetValue(SparkParameters.ConnectTimeoutMilliseconds, out string? connectTimeoutMs);
+            Properties.TryGetValue(ImpalaParameters.ConnectTimeoutMilliseconds, out string? connectTimeoutMs);
             if (connectTimeoutMs != null)
             {
                 ConnectTimeoutMilliseconds = int.TryParse(connectTimeoutMs, NumberStyles.Integer, CultureInfo.InvariantCulture, out int connectTimeoutMsValue) && (connectTimeoutMsValue >= 0)
                     ? connectTimeoutMsValue
-                    : throw new ArgumentOutOfRangeException(SparkParameters.ConnectTimeoutMilliseconds, connectTimeoutMs, $"must be a value of 0 (infinite) or between 1 .. {int.MaxValue}. default is 30000 milliseconds.");
+                    : throw new ArgumentOutOfRangeException(ImpalaParameters.ConnectTimeoutMilliseconds, connectTimeoutMs, $"must be a value of 0 (infinite) or between 1 .. {int.MaxValue}. default is 30000 milliseconds.");
             }
         }
 
@@ -134,18 +126,17 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Spark
         protected override TTransport CreateTransport()
         {
             // Assumption: parameters have already been validated.
-            Properties.TryGetValue(SparkParameters.HostName, out string? hostName);
-            Properties.TryGetValue(SparkParameters.Path, out string? path);
-            Properties.TryGetValue(SparkParameters.Port, out string? port);
-            Properties.TryGetValue(SparkParameters.AuthType, out string? authType);
-            bool isValidAuthType = SparkAuthTypeParser.TryParse(authType, out SparkAuthType authTypeValue);
-            Properties.TryGetValue(SparkParameters.Token, out string? token);
+            Properties.TryGetValue(ImpalaParameters.HostName, out string? hostName);
+            Properties.TryGetValue(ImpalaParameters.Path, out string? path);
+            Properties.TryGetValue(ImpalaParameters.Port, out string? port);
+            Properties.TryGetValue(ImpalaParameters.AuthType, out string? authType);
+            bool isValidAuthType = ImpalaAuthTypeParser.TryParse(authType, out ImpalaAuthType authTypeValue);
             Properties.TryGetValue(AdbcOptions.Username, out string? username);
             Properties.TryGetValue(AdbcOptions.Password, out string? password);
             Properties.TryGetValue(AdbcOptions.Uri, out string? uri);
 
             Uri baseAddress = GetBaseAddress(uri, hostName, path, port);
-            AuthenticationHeaderValue? authenticationHeaderValue = GetAuthenticationHeaderValue(authTypeValue, token, username, password);
+            AuthenticationHeaderValue? authenticationHeaderValue = GetAuthenticationHeaderValue(authTypeValue, username, password);
 
             HttpClientHandler httpClientHandler = NewHttpClientHandler();
             HttpClient httpClient = new(httpClientHandler);
@@ -185,66 +176,44 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Spark
             return httpClientHandler;
         }
 
-        private static AuthenticationHeaderValue? GetAuthenticationHeaderValue(SparkAuthType authType, string? token, string? username, string? password)
+        private static AuthenticationHeaderValue? GetAuthenticationHeaderValue(ImpalaAuthType authType, string? username, string? password)
         {
-            if (!string.IsNullOrEmpty(token) && (authType == SparkAuthType.Empty || authType == SparkAuthType.Token))
-            {
-                return new AuthenticationHeaderValue(BearerAuthenticationScheme, token);
-            }
-            else if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password) && (authType == SparkAuthType.Empty || authType == SparkAuthType.Basic))
+            if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password) && (authType == ImpalaAuthType.Empty || authType == ImpalaAuthType.Basic))
             {
                 return new AuthenticationHeaderValue(BasicAuthenticationScheme, Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}")));
             }
-            else if (!string.IsNullOrEmpty(username) && (authType == SparkAuthType.Empty || authType == SparkAuthType.UsernameOnly))
+            else if (!string.IsNullOrEmpty(username) && (authType == ImpalaAuthType.Empty || authType == ImpalaAuthType.UsernameOnly))
             {
                 return new AuthenticationHeaderValue(BasicAuthenticationScheme, Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:")));
             }
-            else if (authType == SparkAuthType.None)
+            else if (authType == ImpalaAuthType.None)
             {
                 return null;
             }
             else
             {
-                throw new AdbcException("Missing connection properties. Must contain 'token' or 'username' and 'password'");
+                throw new AdbcException("Missing connection properties. Must contain 'username' and 'password'");
             }
         }
 
         protected override async Task<TProtocol> CreateProtocolAsync(TTransport transport, CancellationToken cancellationToken = default)
         {
+            Trace.TraceError($"create protocol with {Properties.Count} properties.");
+
             if (!transport.IsOpen) await transport.OpenAsync(cancellationToken);
             return new TBinaryProtocol(transport);
         }
 
         protected override TOpenSessionReq CreateSessionRequest()
         {
-            var req = new TOpenSessionReq(TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V11)
+            return new TOpenSessionReq(TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V7)
             {
                 CanUseMultipleCatalogs = true,
             };
-            return req;
         }
-
-        protected override Task<TGetResultSetMetadataResp> GetResultSetMetadataAsync(TGetSchemasResp response, CancellationToken cancellationToken = default) =>
-            GetResultSetMetadataAsync(response.OperationHandle, Client, cancellationToken);
-        protected override Task<TGetResultSetMetadataResp> GetResultSetMetadataAsync(TGetCatalogsResp response, CancellationToken cancellationToken = default) =>
-            GetResultSetMetadataAsync(response.OperationHandle, Client, cancellationToken);
-        protected override Task<TGetResultSetMetadataResp> GetResultSetMetadataAsync(TGetColumnsResp response, CancellationToken cancellationToken = default) =>
-            GetResultSetMetadataAsync(response.OperationHandle, Client, cancellationToken);
-        protected override Task<TGetResultSetMetadataResp> GetResultSetMetadataAsync(TGetTablesResp response, CancellationToken cancellationToken = default) =>
-            GetResultSetMetadataAsync(response.OperationHandle, Client, cancellationToken);
-        protected override Task<TRowSet> GetRowSetAsync(TGetTableTypesResp response, CancellationToken cancellationToken = default) =>
-            FetchResultsAsync(response.OperationHandle, cancellationToken: cancellationToken);
-        protected override Task<TRowSet> GetRowSetAsync(TGetColumnsResp response, CancellationToken cancellationToken = default) =>
-            FetchResultsAsync(response.OperationHandle, cancellationToken: cancellationToken);
-        protected override Task<TRowSet> GetRowSetAsync(TGetTablesResp response, CancellationToken cancellationToken = default) =>
-            FetchResultsAsync(response.OperationHandle, cancellationToken: cancellationToken);
-        protected override Task<TRowSet> GetRowSetAsync(TGetCatalogsResp response, CancellationToken cancellationToken = default) =>
-            FetchResultsAsync(response.OperationHandle, cancellationToken: cancellationToken);
-        protected override Task<TRowSet> GetRowSetAsync(TGetSchemasResp response, CancellationToken cancellationToken = default) =>
-            FetchResultsAsync(response.OperationHandle, cancellationToken: cancellationToken);
 
         internal override SchemaParser SchemaParser => new HiveServer2SchemaParser();
 
-        internal override SparkServerType ServerType => SparkServerType.Http;
+        internal override ImpalaServerType ServerType => ImpalaServerType.Http;
     }
 }
