@@ -24,6 +24,10 @@ using Thrift;
 using Thrift.Transport;
 using Thrift.Transport.Client;
 using System.Reflection;
+using System.Net.Security;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
+using System.IO.Compression;
 
 namespace Apache.Arrow.Adbc.Drivers.Apache
 {
@@ -36,6 +40,21 @@ namespace Apache.Arrow.Adbc.Drivers.Apache
 
         public ThriftSocketTransport(string hostNameOrIpAddress, int port, bool connectClient, TConfiguration config, int timeout = 0)
             : base(hostNameOrIpAddress, port, connectClient, config, timeout)
+        {
+        }
+
+        public Stream Input { get { return this.InputStream; } }
+        public Stream Output { get { return this.OutputStream; } }
+    }
+
+    class ThriftTlsSocketTransport : TTlsSocketTransport, IPeekableTransport
+    {
+        public ThriftTlsSocketTransport(string host, int port, TConfiguration config, int timeout,
+           X509Certificate2? certificate = null,
+           RemoteCertificateValidationCallback? certValidator = null,
+           LocalCertificateSelectionCallback? localCertificateSelectionCallback = null,
+           SslProtocols sslProtocols = DefaultSslProtocols)
+           : base(host, port, config, timeout, certificate, certValidator = null, localCertificateSelectionCallback = null, sslProtocols = DefaultSslProtocols)
         {
         }
 

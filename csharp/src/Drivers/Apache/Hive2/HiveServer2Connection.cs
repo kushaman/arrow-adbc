@@ -311,7 +311,9 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Hive2
                 _client = new TCLIService.Client(protocol);
                 TOpenSessionReq request = CreateSessionRequest();
 
-                TOpenSessionResp? session = await Client.OpenSession(request, cancellationToken);
+                CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                CancellationToken cancellationToken1 = cancellationTokenSource.Token;
+                TOpenSessionResp? session = await Client.OpenSession(request, cancellationToken1);
 
                 // Explicitly check the session status
                 if (session == null)

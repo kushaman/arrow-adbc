@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using Apache.Arrow.Adbc.Drivers.Apache.Impala;
 
 namespace Apache.Arrow.Adbc.Drivers.Apache.Hive2
 {
@@ -33,7 +34,12 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Hive2
             {
                 throw new ArgumentOutOfRangeException(nameof(properties), $"Unsupported or unknown value '{type}' given for property '{HiveServer2Parameters.TransportType}'. Supported types: {HiveServer2TransportTypeParser.SupportedList}");
             }
-            return new HiveServer2HttpConnection(properties);
+            return typeValue switch
+            {
+                HiveServer2TransportType.Http => new HiveServer2HttpConnection(properties),
+                HiveServer2TransportType.Standard => new HiveServer2StandardConnection(properties),
+                _ => throw new ArgumentOutOfRangeException(nameof(properties), $"Unsupported or unknown value '{type}' given for property '{HiveServer2Parameters.TransportType}'. Supported types: {HiveServer2TransportTypeParser.SupportedList}"),
+            };
         }
     }
 }
