@@ -20,6 +20,7 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Hive2
     internal enum HiveServer2TransportType
     {
         Http,
+        Standard,
         Empty = int.MaxValue,
     }
 
@@ -37,6 +38,9 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Hive2
                     return true;
                 case HiveServer2TransportTypeConstants.Http:
                     serverTypeValue = HiveServer2TransportType.Http;
+                    return true;
+                case HiveServer2TransportTypeConstants.Standard:
+                    serverTypeValue = HiveServer2TransportType.Standard;
                     return true;
                 default:
                     serverTypeValue = default;
