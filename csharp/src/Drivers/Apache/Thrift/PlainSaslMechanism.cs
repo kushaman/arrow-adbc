@@ -12,36 +12,38 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Thrift
 
     public class PlainSaslMechanism : ISaslMechanism
     {
-        private readonly string _expectedUsername;
-        private readonly string _expectedPassword;
+        private readonly string username;
+        private readonly string password;
+        private bool isComplete = false;
+        private bool isAuthenticated = false;
+
+        public PlainSaslMechanism(string username, string password)
+        {
+            this.username = username;
+            this.password = password;
+        }
 
         public string Name => "PLAIN";
 
-        public PlainSaslMechanism(string expectedUsername, string expectedPassword)
+
+        public byte[] EvaluateChallenge(byte[]? challenge)
         {
-            _expectedUsername = expectedUsername;
-            _expectedPassword = expectedPassword;
+            if (isComplete)
+                return Array.Empty<byte>(); // no more responses
+
+            var authzid = ""; // empty authorization identity
+            string message = $"{authzid}\0{username}\0{password}";
+            isComplete = true; // only one message in PLAIN
+
+            return System.Text.Encoding.UTF8.GetBytes(message);
         }
 
-        public async Task NegotiateAsync(TTransport transport, CancellationToken cancellationToken = default)
+        public bool IsComplete => isComplete;
+        public bool IsAuthenticated => isComplete && isAuthenticated;
+
+        public void SetAuthenticated(bool success)
         {
-            byte[] buffer = new byte[1024];
-            int bytesRead = await transport.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
-            string credentials = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-
-            string[] parts = credentials.Split('\0');
-            if (parts.Length < 3)
-            {
-                throw new Exception("Authentication failed: Malformed credentials.");
-            }
-
-            string username = parts[1];
-            string password = parts[2];
-
-            if (username != _expectedUsername || password != _expectedPassword)
-            {
-                throw new Exception("Authentication failed: Invalid username or password.");
-            }
+            isAuthenticated = success;
         }
     }
 }

@@ -6,7 +6,10 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Thrift
 {
     public interface ISaslMechanism
     {
-        string Name { get; }
-        Task NegotiateAsync(TTransport transport, CancellationToken cancellationToken = default);
+        string Name { get; } // returns "PLAIN"
+        byte[] EvaluateChallenge(byte[]? challenge); // create authentication payload
+        bool IsComplete { get; }
+        bool IsAuthenticated { get; }
+        void SetAuthenticated(bool success);
     }
 }

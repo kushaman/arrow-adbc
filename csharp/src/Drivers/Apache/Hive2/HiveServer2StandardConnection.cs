@@ -134,16 +134,17 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Hive2
             TTransport transport;
             transport = new TSocketTransport(hostName!, int.Parse(port!), connectClient, config: new());
             //return transport;
-            //TBufferedTransport bufferedTransport = new(transport);
+            //TFramedTransport bufferedTransport = new(transport);
             PlainSaslMechanism plainSaslMechanism = new PlainSaslMechanism("hiveuser", "hivepassword");
             TSaslTransport sasltransport = new TSaslTransport(transport, plainSaslMechanism, config: new());
-            return sasltransport;
+            TFramedTransport framedTransport = new(sasltransport);
+            return framedTransport;
         }
 
         protected override async Task<TProtocol> CreateProtocolAsync(TTransport transport, CancellationToken cancellationToken = default)
         {
             if (!transport.IsOpen) await transport.OpenAsync(cancellationToken);
-            return new TBinaryProtocol(transport);
+            return new TBinaryProtocol(transport, true, true);
         }
 
         protected override TOpenSessionReq CreateSessionRequest()
@@ -161,7 +162,7 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Hive2
                 Client_protocol = TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V11,
                 CanUseMultipleCatalogs = true,
             };
-            switch (authTypeValue)
+            /*switch (authTypeValue)
             {
                 case HiveServer2AuthType.UsernameOnly:
                 case HiveServer2AuthType.Basic:
@@ -175,7 +176,7 @@ namespace Apache.Arrow.Adbc.Drivers.Apache.Hive2
                 case HiveServer2AuthType.Empty when !string.IsNullOrEmpty(password):
                     request.Password = password!;
                     break;
-            }
+            }*/
             return request;
         }
 
